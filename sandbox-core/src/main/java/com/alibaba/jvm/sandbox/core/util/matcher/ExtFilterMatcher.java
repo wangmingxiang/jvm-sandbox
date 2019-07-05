@@ -8,11 +8,10 @@ import com.alibaba.jvm.sandbox.api.listener.ext.EventWatchCondition;
 import com.alibaba.jvm.sandbox.core.util.matcher.structure.Access;
 import com.alibaba.jvm.sandbox.core.util.matcher.structure.BehaviorStructure;
 import com.alibaba.jvm.sandbox.core.util.matcher.structure.ClassStructure;
+import com.alibaba.jvm.sandbox.core.util.matcher.structure.FamilyClassStructureWrapper;
 import org.apache.commons.lang3.ArrayUtils;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 import static com.alibaba.jvm.sandbox.api.filter.AccessFlags.*;
 
@@ -24,6 +23,10 @@ import static com.alibaba.jvm.sandbox.api.filter.AccessFlags.*;
 public class ExtFilterMatcher implements Matcher {
 
     private final ExtFilter extFilter;
+
+    private static final Object MUTEX = new Object();
+
+    private static final Map<String, FamilyClassStructureWrapper> CLASS_STRUCTURE_CACHE = new HashMap<String, FamilyClassStructureWrapper>(32);
 
     public ExtFilterMatcher(final ExtFilter extFilter) {
         this.extFilter = extFilter;
@@ -54,15 +57,31 @@ public class ExtFilterMatcher implements Matcher {
     private boolean matchingClassStructure(ClassStructure classStructure) {
         for (final ClassStructure wmCs : getWaitingMatchClassStructures(classStructure)) {
 
+            String javaClassName = wmCs.getJavaClassName();
+            FamilyClassStructureWrapper wrapper = CLASS_STRUCTURE_CACHE.get(javaClassName);
+            if (null == wrapper) {
+                synchronized (MUTEX) {
+                    wrapper = CLASS_STRUCTURE_CACHE.get(javaClassName);
+                    if (null == wrapper) {
+                        Set<ClassStructure> familyInterfaceClassStructures = wmCs.getFamilyInterfaceClassStructures();
+                        Set<ClassStructure> familyAnnotationTypeClassStructures = wmCs.getFamilyAnnotationTypeClassStructures();
+                        wrapper = new FamilyClassStructureWrapper();
+                        wrapper.setFamilyAnnotationTypeClassStructures(familyAnnotationTypeClassStructures);
+                        wrapper.setFamilyInterfaceClassStructures(familyInterfaceClassStructures);
+                        CLASS_STRUCTURE_CACHE.put(javaClassName, wrapper);
+                    }
+                }
+            }
+
             // 匹配类结构
             if (extFilter.doClassFilter(
                     toFilterAccess(wmCs.getAccess()),
-                    wmCs.getJavaClassName(),
+                    javaClassName,
                     null == wmCs.getSuperClassStructure()
                             ? null
                             : wmCs.getSuperClassStructure().getJavaClassName(),
-                    toJavaClassNameArray(wmCs.getFamilyInterfaceClassStructures()),
-                    toJavaClassNameArray(wmCs.getFamilyAnnotationTypeClassStructures())
+                    toJavaClassNameArray(wrapper.getFamilyInterfaceClassStructures()),
+                    toJavaClassNameArray(wrapper.getFamilyAnnotationTypeClassStructures())
             )) {
                 return true;
             }

@@ -89,6 +89,9 @@ public class SandboxClassFileTransformer implements ClassFileTransformer {
                 return null;
             }
 
+            // 过滤掉用户自定义的不会拦截的类
+
+
             return _transform(
                     loader,
                     internalClassName,
